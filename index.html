@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="gu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Naliyapara Admin Notification</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body{font-family:Arial;background:#eef2f7;margin:0;padding:24px}.box{max-width:520px;margin:auto;background:white;padding:24px;border-radius:18px;box-shadow:0 5px 25px #0002}
+h1{font-size:24px}input,textarea{width:100%;padding:12px;margin:7px 0 14px;border:1px solid #ccd3dd;border-radius:9px;box-sizing:border-box}
+button{width:100%;padding:13px;border:0;border-radius:9px;background:#155eef;color:#fff;font-weight:bold;margin-top:7px}
+button.secondary{background:#667085}.hidden{display:none}.status{margin-top:15px;padding:12px;border-radius:9px;background:#f2f4f7}
+</style></head>
+<body><div class="box">
+<h1>🔔 Naliyapara Admin</h1>
+<section id="login">
+<label>Admin Email</label><input id="email" type="email" placeholder="your@email.com">
+<button onclick="sendMagicLink()">📧 Login Link મોકલો</button>
+<p style="font-size:13px">તમારા email પર secure login link આવશે. Passwordની જરૂર નથી.</p>
+</section>
+<section id="panel" class="hidden">
+<p id="who"></p>
+<label>Notification Title</label><input id="title" value="નળીયાપરા પરિવાર">
+<label>Message</label><textarea id="message" rows="5">નવી માહિતી website પર ઉમેરવામાં આવી છે.</textarea>
+<button onclick="sendNotification()">📢 બધા Android Usersને મોકલો</button>
+<button class="secondary" onclick="logout()">Logout</button>
+</section>
+<div id="status" class="status">Supabase project configuration is included in this demo.</div>
+</div>
+<script>
+const SUPABASE_URL="https://kfeaejmlshjliesrirku.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="sb_publishable_NbvXaYkAfUJiW23t7AtVTA_TbpycKg2";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+async function sendMagicLink(){
+ const email=document.getElementById("email").value.trim();
+ if(!email){document.getElementById("status").textContent="❌ Email address નાખો.";return;}
+ const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:window.location.href}});
+ document.getElementById("status").textContent=error?"❌ "+error.message:"✅ Login link તમારા email પર મોકલવામાં આવી છે. Email ખોલીને link પર click કરો.";
+}
+async function init(){
+ const {data:{session}}=await sb.auth.getSession();
+ if(session){document.getElementById("login").classList.add("hidden");document.getElementById("panel").classList.remove("hidden");document.getElementById("who").textContent="Logged in: "+session.user.email;}
+}
+async function sendNotification(){
+ const {data:{session}}=await sb.auth.getSession();
+ if(!session){document.getElementById("status").textContent="❌ Login required.";return;}
+ const {data,error}=await sb.functions.invoke("send-fcm-notification",{body:{title:document.getElementById("title").value,message:document.getElementById("message").value}});
+ document.getElementById("status").textContent=error?"❌ "+error.message:"✅ Notification request sent. Firebase response: "+JSON.stringify(data);
+}
+async function logout(){await sb.auth.signOut();location.reload()}
+init();
+</script></body></html>
