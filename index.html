@@ -12,7 +12,79 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function toast(t,err=false){const x=$('toast');if(!x)return;x.className='msg'+(err?' err':'');x.textContent=t;setTimeout(()=>x.textContent='',3500)}
 async function token(){const {data}=await sb.auth.getSession();return data.session?.access_token||null}
 async function api(action,body={}){const t=await token();if(!t)throw Error('Admin login જરૂરી છે.');const r=await fetch(ADMIN_FN,{method:'POST',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body:JSON.stringify({action,...body})});const d=await r.json().catch(()=>({}));if(!r.ok||d.ok===false)throw Error(d.error||'Request failed');return d}
-function loginView(){ $('app').innerHTML=`<div class="wrap"><div class="card login"><div class="brand"><img src="${logo}"><div><h1>Naliyapara Notification Admin</h1><p>Private notification control panel</p></div></div><div id="toast"></div><form id="login"><label>Email</label><input id="email" type="email" autocomplete="username" required placeholder="Admin email"><label>Password</label><input id="password" type="password" autocomplete="current-password" required><div class="actions"><button class="primary" type="submit">🔐 Login</button></div></form></div></div>`;$('login').onsubmit=async e=>{e.preventDefault();try{const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;render()}catch(e){toast(e.message,true)}}}
+function loginView(){
+  $('app').innerHTML=`<div class="wrap"><div class="card login">
+    <div class="brand"><img src="${logo}"><div><h1>Naliyapara Notification Admin</h1><p>Private notification control panel</p></div></div>
+    <div id="toast"></div>
+    <form id="login">
+      <label>Admin Email</label>
+      <input id="email" type="email" autocomplete="email" required placeholder="Admin email">
+      <div id="otpArea" class="hidden">
+        <label>6 અંકનો OTP</label>
+        <input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456">
+        <div class="small" style="margin-top:6px">તમારા email પર આવેલ 6 અંકનો OTP અહીં દાખલ કરો.</div>
+      </div>
+      <p id="loginHint" class="small">પાસવર્ડની જરૂર નથી. તમારા Admin email પર OTP મોકલાશે.</p>
+      <div class="actions">
+        <button class="primary" id="sendOtpBtn" type="submit">📩 OTP મોકલો</button>
+        <button class="muted hidden" id="resendBtn" type="button">🔄 OTP ફરી મોકલો</button>
+      </div>
+    </form>
+  </div></div>`;
+  let otpSent=false, cooldown=0, timer=null;
+  const emailEl=$('email'), otpEl=$('otp'), form=$('login'), otpArea=$('otpArea');
+  const sendBtn=$('sendOtpBtn'), resendBtn=$('resendBtn'), hint=$('loginHint');
+
+  async function sendOtp(){
+    const email=emailEl.value.trim().toLowerCase();
+    if(!email){toast('Admin email દાખલ કરો.',true);return;}
+    try{
+      sendBtn.disabled=true; resendBtn.disabled=true; toast('OTP મોકલાઈ રહ્યો છે...');
+      const {error}=await sb.auth.signInWithOtp({
+        email,
+        options:{shouldCreateUser:false}
+      });
+      if(error) throw error;
+      otpSent=true; otpArea.classList.remove('hidden'); otpEl.required=true; otpEl.focus();
+      sendBtn.textContent='🔐 OTP Verify કરો';
+      hint.textContent=`${email} પર 6 અંકનો OTP મોકલ્યો છે. OTP દાખલ કરીને Login કરો.`;
+      resendBtn.classList.remove('hidden');
+      cooldown=60;
+      clearInterval(timer);
+      timer=setInterval(()=>{
+        cooldown--;
+        if(cooldown<=0){clearInterval(timer);resendBtn.disabled=false;resendBtn.textContent='🔄 OTP ફરી મોકલો';}
+        else {resendBtn.disabled=true;resendBtn.textContent=`🔄 ફરી મોકલો (${cooldown}s)`;}
+      },1000);
+      resendBtn.textContent='🔄 ફરી મોકલો (60s)';
+      toast('✅ OTP email પર મોકલાઈ દીધો છે.');
+    }catch(e){
+      sendBtn.disabled=false;
+      resendBtn.disabled=false;
+      toast(e.message||'OTP મોકલવામાં ભૂલ થઈ.',true);
+    }
+  }
+
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    if(!otpSent){await sendOtp();return;}
+    const email=emailEl.value.trim().toLowerCase(), token=otpEl.value.trim();
+    if(!/^\d{6}$/.test(token)){toast('6 અંકનો OTP દાખલ કરો.',true);return;}
+    try{
+      sendBtn.disabled=true; resendBtn.disabled=true; toast('OTP ચકાસી રહ્યા છીએ...');
+      const {error}=await sb.auth.verifyOtp({email,token,type:'email'});
+      if(error) throw error;
+      toast('✅ Login સફળ.');
+      setTimeout(render,250);
+    }catch(e){
+      sendBtn.disabled=false;
+      resendBtn.disabled=(cooldown>0);
+      toast(e.message||'OTP ખોટો છે અથવા expire થયો છે.',true);
+    }
+  };
+
+  resendBtn.onclick=async()=>{if(cooldown>0)return;await sendOtp();};
+}
 function appView(){ $('app').innerHTML=`<div class="wrap"><div class="top"><div class="brand"><img src="${logo}"><div><h1>Naliyapara Notification Admin</h1><p>અલગ HTTPS Admin Panel • Main Websiteથી અલગ</p></div></div><button class="muted" id="logout">Logout</button></div><div id="toast"></div><div class="stat-grid"><div class="stat-card"><div class="small">🟢 Active Devices</div><div class="num" id="active">—</div><div class="small">છેલ્લા 30 દિવસ</div></div><div class="stat-card"><div class="small">🕐 Active Schedules</div><div class="num" id="count">—</div><div class="small">ચાલુ schedules</div></div><div class="stat-card"><div class="small">📤 આજે મોકલેલી</div><div class="num" id="todaySent">—</div><div class="small">આજના notifications</div></div><div class="stat-card"><div class="small">✅ સફળ</div><div class="num" id="todaySuccess">—</div><div class="small">આજે સફળતાપૂર્વક</div></div><div class="stat-card"><div class="small">❌ Failed</div><div class="num" id="todayFailed">—</div><div class="small">આજે નિષ્ફળ</div></div></div><div class="card"><h2>📢 હમણાં Notification મોકલો</h2><p class="small">બધા Android App Usersના <b>all_users</b> topic પર તરત notification મોકલાશે.</p><form id="send"><label>Notification Title</label><input id="nowTitle" value="નળીયાપરા પરિવાર"><label>Message</label><textarea id="nowMsg" required placeholder="તમારો message લખો..."></textarea><div class="actions"><button class="primary" type="submit">📢 હમણાં Notification મોકલો</button></div></form></div><div class="card"><div class="row"><div><h2>🕐 Daily Schedule</h2><div class="small">દરરોજ એક જ સમય પર message મોકલવા માટે. Edit • Pause/Resume • Delete ઉપલબ્ધ.</div></div><button class="muted" id="newSchedule">＋ New Schedule</button></div><form id="scheduleForm" class="hidden"><input type="hidden" id="sid"><div class="grid"><div><label>Title</label><input id="stitle" required value="નળીયાપરા પરિવાર"></div><div><label>દરરોજનો સમય</label><input id="stime" type="time" required value="09:00"></div></div><label>Message</label><textarea id="smsg" required></textarea><label><input id="senabled" type="checkbox" checked style="width:auto"> Schedule ચાલુ રાખો</label><div class="actions"><button class="green" type="submit">💾 Save Schedule</button><button class="muted" type="button" id="cancel">Cancel</button></div></form><div id="schedules"></div></div><div class="card"><div class="row"><h2>📜 Notification History</h2><button class="muted" id="refresh">🔄 Refresh</button></div><div class="filter"><div><label>Search</label><input id="hsearch" placeholder="Title અથવા message"></div><div><label>Type</label><select id="htype"><option value="all">બધા</option><option value="immediate">હમણાં</option><option value="scheduled">Scheduled</option></select></div><div><label>Status</label><select id="hstatus"><option value="all">બધા</option><option value="success">સફળ</option><option value="failed">Failed</option></select></div><div style="flex:0 0 auto"><button class="muted" id="clearFilters" type="button">Clear</button></div></div><div id="history" class="small">Loading...</div></div></div>`;
 $('logout').onclick=async()=>{await sb.auth.signOut();loginView()};$('send').onsubmit=sendNow;$('newSchedule').onclick=()=>{editing=null;$('sid').value='';$('stitle').value='નળીયાપરા પરિવાર';$('stime').value='09:00';$('smsg').value='';$('senabled').checked=true;$('scheduleForm').classList.remove('hidden')};$('cancel').onclick=()=>$('scheduleForm').classList.add('hidden');$('scheduleForm').onsubmit=saveSchedule;$('refresh').onclick=loadAll;$('hsearch').oninput=renderHistory;$('htype').onchange=renderHistory;$('hstatus').onchange=renderHistory;$('clearFilters').onclick=()=>{$('hsearch').value='';$('htype').value='all';$('hstatus').value='all';renderHistory()};loadAll()}
 async function sendNow(e){e.preventDefault();if(!confirm('આ notification હમણાં મોકલવી છે?'))return;try{toast('મોકલાઈ રહ્યું છે...');await api('send_now',{title:$('nowTitle').value,message:$('nowMsg').value});$('nowMsg').value='';toast('✅ Notification સફળતાપૂર્વક મોકલાઈ.');loadHistory()}catch(e){toast(e.message,true)}}
