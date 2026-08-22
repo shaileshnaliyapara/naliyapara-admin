@@ -21,19 +21,22 @@ function loginView(){
       <input id="email" type="email" autocomplete="email" required placeholder="Admin email">
       <div id="otpArea" class="hidden">
         <label>8 અંકનો OTP</label>
-        <input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" pattern="[0-9]{8}" placeholder="12345678">
+        <input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" minlength="8" pattern="[0-9]{8}" inputmode="numeric" placeholder="12345678">
         <div class="small" style="margin-top:6px">તમારા email પર આવેલ 8 અંકનો OTP અહીં દાખલ કરો.</div>
       </div>
       <p id="loginHint" class="small">પાસવર્ડની જરૂર નથી. તમારા Admin email પર OTP મોકલાશે.</p>
       <div class="actions">
-        <button class="primary" id="sendOtpBtn" type="submit">📩 OTP મોકલો</button>
+        <button class="primary" id="sendOtpBtn" type="submit">📩 OTP મોકલો</button><button class="green hidden" id="verifyOtpBtn" type="button">✅ OTP Verify કરો</button>
         <button class="muted hidden" id="resendBtn" type="button">🔄 OTP ફરી મોકલો</button>
       </div>
     </form>
   </div></div>`;
   let otpSent=false, cooldown=0, timer=null;
   const emailEl=$('email'), otpEl=$('otp'), form=$('login'), otpArea=$('otpArea');
-  const sendBtn=$('sendOtpBtn'), resendBtn=$('resendBtn'), hint=$('loginHint');
+  otpEl.addEventListener('input',()=>{ otpEl.value=otpEl.value.replace(/\D/g,'').slice(0,8); });
+  otpEl.addEventListener('paste',()=>setTimeout(()=>{ otpEl.value=otpEl.value.replace(/\D/g,'').slice(0,8); },0));
+  const sendBtn=$('sendOtpBtn'), verifyBtn=$('verifyOtpBtn'), resendBtn=$('resendBtn'), hint=$('loginHint');
+  verifyBtn.onclick=verifyCode;
 
   async function sendOtp(){
     const email=emailEl.value.trim().toLowerCase();
@@ -46,7 +49,7 @@ function loginView(){
       });
       if(error) throw error;
       otpSent=true; otpArea.classList.remove('hidden'); otpEl.required=true; otpEl.focus();
-      sendBtn.textContent='🔐 OTP Verify કરો';
+      sendBtn.classList.add('hidden'); verifyBtn.classList.remove('hidden');
       hint.textContent=`${email} પર 8 અંકનો OTP મોકલ્યો છે. OTP દાખલ કરીને Login કરો.`;
       resendBtn.classList.remove('hidden');
       cooldown=60;
@@ -65,22 +68,29 @@ function loginView(){
     }
   }
 
-  form.onsubmit=async e=>{
-    e.preventDefault();
-    if(!otpSent){await sendOtp();return;}
+  async function verifyCode(){
     const email=emailEl.value.trim().toLowerCase(), token=otpEl.value.trim();
-    if(!/^\d{8}$/.test(token)){toast('8 અંકનો OTP દાખલ કરો.',true);return;}
+    if(!email){toast('Admin email દાખલ કરો.',true);return;}
+    if(!/^\d{8}$/.test(token)){toast('કૃપા કરીને 8 અંકનો OTP દાખલ કરો.',true);otpEl.focus();return;}
     try{
       sendBtn.disabled=true; resendBtn.disabled=true; toast('OTP ચકાસી રહ્યા છીએ...');
-      const {error}=await sb.auth.verifyOtp({email,token,type:'email'});
-      if(error) throw error;
+      const result=await sb.auth.verifyOtp({email,token,type:'email'});
+      if(result.error) throw result.error;
+      if(!result.data?.session){throw new Error('OTP verify થયો પરંતુ login session મળ્યું નથી.');}
       toast('✅ Login સફળ.');
-      setTimeout(render,250);
+      setTimeout(render,300);
     }catch(e){
       sendBtn.disabled=false;
       resendBtn.disabled=(cooldown>0);
-      toast(e.message||'OTP ખોટો છે અથવા expire થયો છે.',true);
+      toast('❌ '+(e?.message||'OTP ખોટો છે અથવા expire થયો છે.'),true);
+      console.error('OTP verify error:',e);
     }
+  }
+
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    if(!otpSent){await sendOtp();return;}
+    await verifyCode();
   };
 
   resendBtn.onclick=async()=>{if(cooldown>0)return;await sendOtp();};

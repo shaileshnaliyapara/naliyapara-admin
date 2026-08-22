@@ -5,14 +5,17 @@ NALIYAPARA NOTIFICATION ADMIN - EMAIL OTP SETUP
    change the email template so it displays the OTP token:
 
    <h2>Naliyapara Admin Login OTP</h2>
-   <p>Your 6-digit login code is:</p>
+   <p>Your 8-digit login code is:</p>
    <h1>{{ .Token }}</h1>
    <p>This code expires shortly. Do not share it with anyone.</p>
 
 3) Save the template.
 4) The admin email must already exist in Supabase Auth because this app uses
    shouldCreateUser:false.
-5) Open the admin panel. Enter the admin email -> OTP મોકલો -> enter the 6-digit
+5) Open the admin panel. Enter the admin email -> OTP મોકલો -> enter the 8-digit
    code -> Login.
 
 The old password field is removed from the login page.
+
+
+IMPORTANT: This build expects exactly 8 numeric digits. Supabase Auth must be configured with auth.email.otp_length = 8. If the email contains 8 digits but verification fails, check that project setting first.
