@@ -35,8 +35,9 @@ function loginView(){
   const emailEl=$('email'), otpEl=$('otp'), form=$('login'), otpArea=$('otpArea');
   otpEl.addEventListener('input',()=>{ otpEl.value=otpEl.value.replace(/\D/g,'').slice(0,8); });
   otpEl.addEventListener('paste',()=>setTimeout(()=>{ otpEl.value=otpEl.value.replace(/\D/g,'').slice(0,8); },0));
+  otpEl.addEventListener('keydown', function(ev){ if(ev.key==='Enter' && otpSent){ ev.preventDefault(); verifyCode(); } });
   const sendBtn=$('sendOtpBtn'), verifyBtn=$('verifyOtpBtn'), resendBtn=$('resendBtn'), hint=$('loginHint');
-  verifyBtn.onclick=verifyCode;
+  verifyBtn.addEventListener('click', function(ev){ ev.preventDefault(); verifyCode(); });
 
   async function sendOtp(){
     const email=emailEl.value.trim().toLowerCase();
@@ -49,7 +50,7 @@ function loginView(){
       });
       if(error) throw error;
       otpSent=true; otpArea.classList.remove('hidden'); otpEl.required=true; otpEl.focus();
-      sendBtn.classList.add('hidden'); verifyBtn.classList.remove('hidden');
+      sendBtn.classList.add('hidden'); verifyBtn.classList.remove('hidden'); verifyBtn.disabled=false;
       hint.textContent=`${email} પર 8 અંકનો OTP મોકલ્યો છે. OTP દાખલ કરીને Login કરો.`;
       resendBtn.classList.remove('hidden');
       cooldown=60;
@@ -73,14 +74,16 @@ function loginView(){
     if(!email){toast('Admin email દાખલ કરો.',true);return;}
     if(!/^\d{8}$/.test(token)){toast('કૃપા કરીને 8 અંકનો OTP દાખલ કરો.',true);otpEl.focus();return;}
     try{
-      sendBtn.disabled=true; resendBtn.disabled=true; toast('OTP ચકાસી રહ્યા છીએ...');
+      sendBtn.disabled=true; verifyBtn.disabled=true; resendBtn.disabled=true; toast('OTP ચકાસી રહ્યા છીએ...');
       const result=await sb.auth.verifyOtp({email,token,type:'email'});
       if(result.error) throw result.error;
       if(!result.data?.session){throw new Error('OTP verify થયો પરંતુ login session મળ્યું નથી.');}
+      await sb.auth.getSession();
       toast('✅ Login સફળ.');
       setTimeout(render,300);
     }catch(e){
       sendBtn.disabled=false;
+      verifyBtn.disabled=false;
       resendBtn.disabled=(cooldown>0);
       toast('❌ '+(e?.message||'OTP ખોટો છે અથવા expire થયો છે.'),true);
       console.error('OTP verify error:',e);
@@ -93,7 +96,7 @@ function loginView(){
     await verifyCode();
   };
 
-  resendBtn.onclick=async()=>{if(cooldown>0)return;await sendOtp();};
+  resendBtn.addEventListener('click', async function(ev){ ev.preventDefault(); if(cooldown>0)return; await sendOtp(); });
 }
 function appView(){ $('app').innerHTML=`<div class="wrap"><div class="top"><div class="brand"><img src="${logo}"><div><h1>Naliyapara Notification Admin</h1><p>અલગ HTTPS Admin Panel • Main Websiteથી અલગ</p></div></div><button class="muted" id="logout">Logout</button></div><div id="toast"></div><div class="stat-grid"><div class="stat-card"><div class="small">🟢 Active Devices</div><div class="num" id="active">—</div><div class="small">છેલ્લા 30 દિવસ</div></div><div class="stat-card"><div class="small">🕐 Active Schedules</div><div class="num" id="count">—</div><div class="small">ચાલુ schedules</div></div><div class="stat-card"><div class="small">📤 આજે મોકલેલી</div><div class="num" id="todaySent">—</div><div class="small">આજના notifications</div></div><div class="stat-card"><div class="small">✅ સફળ</div><div class="num" id="todaySuccess">—</div><div class="small">આજે સફળતાપૂર્વક</div></div><div class="stat-card"><div class="small">❌ Failed</div><div class="num" id="todayFailed">—</div><div class="small">આજે નિષ્ફળ</div></div></div><div class="card"><h2>📢 હમણાં Notification મોકલો</h2><p class="small">બધા Android App Usersના <b>all_users</b> topic પર તરત notification મોકલાશે.</p><form id="send"><label>Notification Title</label><input id="nowTitle" value="નળીયાપરા પરિવાર"><label>Message</label><textarea id="nowMsg" required placeholder="તમારો message લખો..."></textarea><div class="actions"><button class="primary" type="submit">📢 હમણાં Notification મોકલો</button></div></form></div><div class="card"><div class="row"><div><h2>🕐 Daily Schedule</h2><div class="small">દરરોજ એક જ સમય પર message મોકલવા માટે. Edit • Pause/Resume • Delete ઉપલબ્ધ.</div></div><button class="muted" id="newSchedule">＋ New Schedule</button></div><form id="scheduleForm" class="hidden"><input type="hidden" id="sid"><div class="grid"><div><label>Title</label><input id="stitle" required value="નળીયાપરા પરિવાર"></div><div><label>દરરોજનો સમય</label><input id="stime" type="time" required value="09:00"></div></div><label>Message</label><textarea id="smsg" required></textarea><label><input id="senabled" type="checkbox" checked style="width:auto"> Schedule ચાલુ રાખો</label><div class="actions"><button class="green" type="submit">💾 Save Schedule</button><button class="muted" type="button" id="cancel">Cancel</button></div></form><div id="schedules"></div></div><div class="card"><div class="row"><h2>📜 Notification History</h2><button class="muted" id="refresh">🔄 Refresh</button></div><div class="filter"><div><label>Search</label><input id="hsearch" placeholder="Title અથવા message"></div><div><label>Type</label><select id="htype"><option value="all">બધા</option><option value="immediate">હમણાં</option><option value="scheduled">Scheduled</option></select></div><div><label>Status</label><select id="hstatus"><option value="all">બધા</option><option value="success">સફળ</option><option value="failed">Failed</option></select></div><div style="flex:0 0 auto"><button class="muted" id="clearFilters" type="button">Clear</button></div></div><div id="history" class="small">Loading...</div></div></div>`;
 $('logout').onclick=async()=>{await sb.auth.signOut();loginView()};$('send').onsubmit=sendNow;$('newSchedule').onclick=()=>{editing=null;$('sid').value='';$('stitle').value='નળીયાપરા પરિવાર';$('stime').value='09:00';$('smsg').value='';$('senabled').checked=true;$('scheduleForm').classList.remove('hidden')};$('cancel').onclick=()=>$('scheduleForm').classList.add('hidden');$('scheduleForm').onsubmit=saveSchedule;$('refresh').onclick=loadAll;$('hsearch').oninput=renderHistory;$('htype').onchange=renderHistory;$('hstatus').onchange=renderHistory;$('clearFilters').onclick=()=>{$('hsearch').value='';$('htype').value='all';$('hstatus').value='all';renderHistory()};loadAll()}
