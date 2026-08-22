@@ -20,9 +20,9 @@ function loginView(){
       <label>Admin Email</label>
       <input id="email" type="email" autocomplete="email" required placeholder="Admin email">
       <div id="otpArea" class="hidden">
-        <label>6 અંકનો OTP</label>
-        <input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456">
-        <div class="small" style="margin-top:6px">તમારા email પર આવેલ 6 અંકનો OTP અહીં દાખલ કરો.</div>
+        <label>8 અંકનો OTP</label>
+        <input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" pattern="[0-9]{8}" placeholder="12345678">
+        <div class="small" style="margin-top:6px">તમારા email પર આવેલ 8 અંકનો OTP અહીં દાખલ કરો.</div>
       </div>
       <p id="loginHint" class="small">પાસવર્ડની જરૂર નથી. તમારા Admin email પર OTP મોકલાશે.</p>
       <div class="actions">
@@ -47,7 +47,7 @@ function loginView(){
       if(error) throw error;
       otpSent=true; otpArea.classList.remove('hidden'); otpEl.required=true; otpEl.focus();
       sendBtn.textContent='🔐 OTP Verify કરો';
-      hint.textContent=`${email} પર 6 અંકનો OTP મોકલ્યો છે. OTP દાખલ કરીને Login કરો.`;
+      hint.textContent=`${email} પર 8 અંકનો OTP મોકલ્યો છે. OTP દાખલ કરીને Login કરો.`;
       resendBtn.classList.remove('hidden');
       cooldown=60;
       clearInterval(timer);
@@ -69,7 +69,7 @@ function loginView(){
     e.preventDefault();
     if(!otpSent){await sendOtp();return;}
     const email=emailEl.value.trim().toLowerCase(), token=otpEl.value.trim();
-    if(!/^\d{6}$/.test(token)){toast('6 અંકનો OTP દાખલ કરો.',true);return;}
+    if(!/^\d{8}$/.test(token)){toast('8 અંકનો OTP દાખલ કરો.',true);return;}
     try{
       sendBtn.disabled=true; resendBtn.disabled=true; toast('OTP ચકાસી રહ્યા છીએ...');
       const {error}=await sb.auth.verifyOtp({email,token,type:'email'});
