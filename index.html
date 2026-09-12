@@ -4,10 +4,69 @@
 const SUPABASE_URL='https://kfeaejmlshjliesrirku.supabase.co';
 const SUPABASE_KEY='sb_publishable_NbvXaYkAfUJiW23t7AtVTA_TbpycKg2';
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);const ADMIN_FN=SUPABASE_URL+'/functions/v1/admin-notifications';const logo='logo.png';let schedules=[],birthdays=[],editingBirthday=null,csvRows=[];
-const $=id=>document.getElementById(id);function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function toast(t,err=false){const x=$('toast');if(!x)return;x.className='msg'+(err?' err':'');x.textContent=t;setTimeout(()=>x.textContent='',4500)}async function token(){const {data}=await sb.auth.getSession();return data.session?.access_token||null}async function api(action,body={}){const t=await token();if(!t)throw Error('Admin login જરૂરી છે.');const r=await fetch(ADMIN_FN,{method:'POST',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body:JSON.stringify({action,...body})});const d=await r.json().catch(()=>({}));if(!r.ok||d.ok===false)throw Error(d.error||'Request failed');return d}
-function loginView(){ $('app').innerHTML=`<div class="wrap"><div class="card login"><div class="brand"><img src="${logo}"><div><h1>Naliyapara Notification Admin</h1><p>Private notification control panel</p></div></div><div id="toast"></div><form id="login"><label>Admin Email</label><input id="email" type="email" autocomplete="email" required placeholder="Admin email"><label>8 Digit OTP</label><input id="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" pattern="[0-9]{8}" placeholder="8 digit OTP" style="letter-spacing:4px;text-align:center;font-weight:800" disabled><p class="small" id="loginHint">Admin email દાખલ કરો અને OTP મોકલો.</p><div class="actions"><button class="primary" id="sendOtpBtn" type="submit">📧 8 Digit OTP મોકલો</button><button class="green" id="verifyOtpBtn" type="button" disabled>🔐 Admin Login</button></div></form></div></div>`;
-$('login').onsubmit=async e=>{e.preventDefault();try{const email=$('email').value.trim().toLowerCase();if(!email)return;const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:false}});if(error)throw error;$('otp').disabled=false;$('verifyOtpBtn').disabled=false;$('otp').focus();$('loginHint').textContent='તમારા email પર 8 digit OTP મોકલાયો છે. OTP અહીં દાખલ કરો.';toast('✅ 8 digit OTP email પર મોકલાયો છે.')}catch(e){toast(e.message,true)}};
-$('verifyOtpBtn').onclick=async()=>{try{const email=$('email').value.trim().toLowerCase();const otp=$('otp').value.trim();if(!email)throw Error('Admin email દાખલ કરો.');if(!/^[0-9]{8}$/.test(otp))throw Error('8 digit OTP દાખલ કરો.');$('verifyOtpBtn').disabled=true;const {data,error}=await sb.auth.verifyOtp({email,token:otp,type:'email'});if(error)throw error;if(!data.session)throw Error('OTP verify થયું પરંતુ login session મળ્યું નથી.');toast('✅ Admin login successful.');appView()}catch(e){$('verifyOtpBtn').disabled=false;toast(e.message,true)}};
+const $=id=>document.getElementById(id);function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function toast(t,err=false){const x=$('toast');if(!x)return;x.className='msg'+(err?' err':'');x.textContent=t;setTimeout(()=>x.textContent='',4500)}async function token(){const {data}=await sb.auth.getSession();return data.session?.access_token||null}async function api(action,body={}){
+ const t=await token();
+ if(!t)throw Error('Admin login જરૂરી છે.');
+ let r,d,text='';
+ try{
+  r=await fetch(ADMIN_FN,{method:'POST',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body:JSON.stringify({action,...body})});
+  text=await r.text();
+  try{d=text?JSON.parse(text):{};}catch(_){d={};}
+ }catch(err){throw Error('Admin API સાથે connection થઈ શક્યું નથી: '+(err.message||'Network error'))}
+ if(!r.ok||d.ok===false){
+  const detail=d.error||d.message||text||('HTTP '+r.status);
+  throw Error('Birthday/Admin API error (HTTP '+r.status+'): '+detail);
+ }
+ return d;
+}
+function loginView(){ $('app').innerHTML=`<div class="wrap"><div class="card login"><div class="brand"><img src="${logo}"><div><h1>Naliyapara Notification Admin</h1><p>Private notification control panel</p></div></div><div id="toast"></div><form id="login"><label>Admin Email</label><input id="email" type="email" autocomplete="email" required placeholder="Admin email"><label>8 Digit OTP</label><input id="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" pattern="[0-9]{8}" placeholder="8 digit OTP" style="letter-spacing:4px;text-align:center;font-weight:800" disabled><p class="small" id="loginHint">Admin email દાખલ કરો અને OTP મોકલો.</p><div class="actions"><button class="primary" id="loginActionBtn" type="submit">📧 8 Digit OTP મોકલો</button></div></form></div></div>`;
+let otpSent=false;
+$('login').onsubmit=async e=>{
+ e.preventDefault();
+ if(otpSent){ return verifyLoginOtp(); }
+ try{
+  const email=$('email').value.trim().toLowerCase();
+  if(!email)throw Error('Admin email દાખલ કરો.');
+  $('loginActionBtn').disabled=true;
+  $('loginActionBtn').textContent='⏳ OTP મોકલાઈ રહ્યો છે...';
+  const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:false}});
+  if(error)throw error;
+  otpSent=true;
+  $('otp').disabled=false;
+  $('otp').focus();
+  $('loginActionBtn').type='button';
+  $('loginActionBtn').textContent='🔐 Admin Login';
+  $('loginActionBtn').className='green';
+  $('loginActionBtn').onclick=verifyLoginOtp;
+  $('loginHint').textContent='તમારા email પર 8 digit OTP મોકલાયો છે. OTP અહીં દાખલ કરો.';
+  toast('✅ 8 digit OTP email પર મોકલાયો છે.');
+ }catch(e){
+  $('loginActionBtn').disabled=false;
+  $('loginActionBtn').textContent='📧 8 Digit OTP મોકલો';
+  toast(e.message||'OTP મોકલવામાં error આવી.',true);
+ }
+};
+async function verifyLoginOtp(){
+ try{
+  const email=$('email').value.trim().toLowerCase();
+  const otp=$('otp').value.trim();
+  if(!email)throw Error('Admin email દાખલ કરો.');
+  if(!/^[0-9]{8}$/.test(otp))throw Error('8 digit OTP દાખલ કરો.');
+  $('loginActionBtn').disabled=true;
+  $('loginActionBtn').textContent='⏳ Login થઈ રહ્યું છે...';
+  const {data,error}=await sb.auth.verifyOtp({email,token:otp,type:'email'});
+  if(error)throw error;
+  if(!data.session)throw Error('OTP verify થયું પરંતુ login session મળ્યું નથી.');
+  toast('✅ Admin login successful.');
+  appView();
+}catch(e){
+ $('loginActionBtn').disabled=false;
+ $('loginActionBtn').textContent='🔐 Admin Login';
+ toast(e.message||'Login error.',true);
+ }
+}
+$('otp').oninput=()=>{$('otp').value=$('otp').value.replace(/\D/g,'').slice(0,8)};
+}{try{const email=$('email').value.trim().toLowerCase();const otp=$('otp').value.trim();if(!email)throw Error('Admin email દાખલ કરો.');if(!/^[0-9]{8}$/.test(otp))throw Error('8 digit OTP દાખલ કરો.');$('verifyOtpBtn').disabled=true;const {data,error}=await sb.auth.verifyOtp({email,token:otp,type:'email'});if(error)throw error;if(!data.session)throw Error('OTP verify થયું પરંતુ login session મળ્યું નથી.');toast('✅ Admin login successful.');appView()}catch(e){$('verifyOtpBtn').disabled=false;toast(e.message,true)}};
 $('otp').oninput=()=>{$('otp').value=$('otp').value.replace(/\D/g,'').slice(0,8)};
 }
 function appView(){ $('app').innerHTML=`<div class="wrap"><div class="top"><div class="brand"><img src="${logo}"><div><h1>Naliyapara Notification Admin</h1><p>અલગ HTTPS Admin Panel • Main Websiteથી અલગ</p></div></div><button class="muted" id="logout">Logout</button></div><div id="toast"></div><div class="grid"><div class="card"><div class="small">છેલ્લા 30 દિવસમાં active notification devices</div><div class="stat" id="active">—</div><div class="small">Android app heartbeat/device registration પરથી ગણાશે.</div></div><div class="card"><div class="small">Schedules</div><div class="stat" id="count">—</div><div class="small">એકથી વધારે daily schedules બનાવી શકાય.</div></div><div class="card birthday"><div class="small">Birthday Contacts</div><div class="stat" id="bcount">—</div><div class="small">આ contactsના birthday પર automatic FCM notification જશે.</div></div></div>
@@ -25,7 +84,24 @@ async function loadSchedules(){try{const d=await api('list_schedules');schedules
 window.editSchedule=id=>{const x=schedules.find(a=>a.id===id);if(!x)return;$('sid').value=x.id;$('stitle').value=x.title;$('stime').value=String(x.send_time).slice(0,5);$('smsg').value=x.message;$('senabled').checked=x.enabled;$('scheduleForm').classList.remove('hidden');scrollTo({top:$('scheduleForm').offsetTop-20,behavior:'smooth'})};window.toggleSchedule=async(id,en)=>{const x=schedules.find(a=>a.id===id);if(!x)return;try{await api('save_schedule',{id,title:x.title,message:x.message,send_time:String(x.send_time).slice(0,5),enabled:en});toast('Schedule status બદલાયો.');loadSchedules()}catch(e){toast(e.message,true)}};window.deleteSchedule=async id=>{if(!confirm('આ schedule delete કરવો છે?'))return;try{await api('delete_schedule',{id});toast('Schedule delete થયો.');loadSchedules()}catch(e){toast(e.message,true)}};
 async function loadHistory(){try{const d=await api('history');const rows=Array.isArray(d)?d:[];$('history').innerHTML=rows.length?rows.map(x=>`<div class="schedule"><b>${esc(x.title)}</b> — ${esc(x.success?'સફળ':'ERROR')}<br><span class="small">${new Date(x.sent_at).toLocaleString('gu-IN')}</span><div>${esc(x.message)}</div>${x.error?'<div style="color:#b91c1c">'+esc(x.error)+'</div>':''}</div>`).join(''):'હજુ history નથી.'}catch(e){$('history').textContent=e.message}}
 function showBirthdayForm(x=null){editingBirthday=x?.id||null;$('bid').value=x?.id||'';$('bname').value=x?.name||'';$('bvillage').value=x?.village||'';$('bdate').value=x?.birth_date||'';$('bactive').checked=x?x.active!==false:true;$('birthdayForm').classList.remove('hidden');scrollTo({top:$('birthdayForm').offsetTop-20,behavior:'smooth'})}
-async function saveBirthday(e){e.preventDefault();try{await api('save_birthday',{id:$('bid').value||undefined,name:$('bname').value,village:$('bvillage').value,birth_date:$('bdate').value,active:$('bactive').checked});$('birthdayForm').classList.add('hidden');toast('✅ Birthday contact save થયો.');loadBirthdays()}catch(e){toast(e.message,true)}}
+async function saveBirthday(e){
+ e.preventDefault();
+ try{
+  const name=$('bname').value.trim();
+  const village=$('bvillage').value.trim();
+  const birth_date=$('bdate').value;
+  if(!name)throw Error('નામ દાખલ કરો.');
+  if(!village)throw Error('ગામનું નામ દાખલ કરો.');
+  if(!birth_date)throw Error('જન્મ તારીખ પસંદ કરો.');
+  toast('Birthday contact save થઈ રહ્યો છે...');
+  await api('save_birthday',{id:$('bid').value||undefined,name,village,birth_date,active:$('bactive').checked});
+  $('birthdayForm').classList.add('hidden');
+  toast('✅ Birthday contact save થયો.');
+  await loadBirthdays();
+ }catch(e){
+  toast(e.message||'Birthday save કરવામાં error આવી.',true);
+ }
+}
 async function loadBirthdays(){try{const d=await api('list_birthdays');birthdays=Array.isArray(d)?d:[];$('bcount').textContent=birthdays.length;renderBirthdays()}catch(e){toast(e.message,true)}}
 function renderBirthdays(){const el=$('birthdays');if(!birthdays.length){el.innerHTML='<div class="small" style="padding:18px;text-align:center">હજુ કોઈ Birthday contact નથી.</div>';return}el.innerHTML=`<div class="tableWrap"><table class="btable"><thead><tr><th>નામ</th><th>ગામ</th><th>જન્મ તારીખ</th><th>Status</th><th>Actions</th></tr></thead><tbody>${birthdays.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.village)}</td><td>${esc(x.birth_date)}</td><td><span class="badge ${x.active?'':'off'}">${x.active?'ચાલુ':'બંધ'}</span></td><td><div class="actions" style="margin-top:0"><button class="muted" onclick='editBirthday(${JSON.stringify(x).replace(/'/g,"&#39;")})'>✏️ Edit</button><button class="primary" onclick="sendBirthdayNow('${x.id}')">🎂 Test Send</button><button class="danger" onclick="deleteBirthday('${x.id}')">🗑️ Delete</button></div></td></tr>`).join('')}</tbody></table></div>`}
 window.editBirthday=x=>showBirthdayForm(x);window.deleteBirthday=async id=>{if(!confirm('આ Birthday contact delete કરવો છે?'))return;try{await api('delete_birthday',{id});toast('Birthday contact delete થયો.');loadBirthdays()}catch(e){toast(e.message,true)}};window.sendBirthdayNow=async id=>{if(!confirm('આ વ્યક્તિ માટે test birthday notification બધા app usersને મોકલવી છે?'))return;try{toast('Birthday notification મોકલાઈ રહ્યું છે...');const d=await api('send_birthday_now',{id});toast('✅ Test birthday notification મોકલાઈ.');loadBirthdayHistory()}catch(e){toast(e.message,true)}};
